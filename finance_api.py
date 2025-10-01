@@ -19,4 +19,9 @@ headers = {
 
 response = requests.request("POST", url, headers=headers, data=payload)
 
-print(response.text)
+response_json = response.json()
+if "result" in response_json:
+    print(response_json["result"])
+else:
+    print(response_json)
+
