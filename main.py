@@ -2,10 +2,13 @@ from agno.agent import Agent
 from agno.tools import tool
 import requests
 import os
+import time
+import json
 from typing import List, Dict
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from twilio.rest import Client
+from agno.tools.eleven_labs import ElevenLabsTools
 
 load_dotenv()
 
@@ -97,6 +100,32 @@ def twilio_call_user(user_phone: str, top3: Dict) -> str:
     )
 
     return call.sid
+    
+def generate_stock_picks_speech(
+    picks_json: str,
+) -> str:
+    """
+    Takes JSON (string) in the required schema, builds a voiceover script,
+    and uses ElevenLabs to synthesize it. Returns the script text.
+    """
+    
+    elevenlabs = ElevenLabs(
+        api_key=os.getenv("ELEVEN_LABS_API"),
+    )
+
+    # Create an Agent with the ElevenLabs tool
+    agent = Agent(tools=[
+        ElevenLabsTools(
+            voice_id="JBFqnCBsd6RMkjVDRZzb", 
+            model_id="eleven_multilingual_v2", 
+            target_directory="audio_generations",
+            enable_text_to_speech=True,
+            
+        )
+    ], name="ElevenLabs Agent")
+    
+    agent.print_response("Generate a audio summary of the big bang theory", markdown=True)
+
 
 agent = Agent(
     model=LLM,
@@ -109,15 +138,21 @@ user_question = "Recommend me 5 stocks to buy today"
 
 agent.print_response(f"""User asked: {user_question}
 
-Call finance_api_search to get current trending stocks data.
+Step 1: Call finance_api_search to get current trending stocks data.
 The function returns a structured response with a 'trending_stocks' array containing individual stock information.
 Each stock has: symbol, name, price, price_change, percentage_change, and trend.
 
-Analyze the trending stocks and select the number of stocks the user requested with:
+Step 2: Analyze the trending stocks and select the number of stocks the user requested with:
 - Positive trend ('up')
 - Good percentage gains
 - Well-known companies
 - Strong recent performance
+
+Step 3: After successfully generating the stock recommendations, call twilio_call_user with:
+- user_phone: "6473236920" 
+- top3: the JSON response containing your stock picks
+
+This will make a phone call to notify the user about their stock recommendations.
 
 You MUST return your response as valid JSON in this exact format:
 {{
