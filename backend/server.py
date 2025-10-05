@@ -246,7 +246,9 @@ def call_and_collect(to_number: str, message: str, timeout_sec: int = 45) -> str
 
 def run_server():
     """Start Flask server"""
-    app.run(host="*******", port=3000, debug=True, threaded=True, use_reloader=False)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "3000"))
+    app.run(host=host, port=port, debug=True, threaded=True, use_reloader=False)
 
 
 if __name__ == "__main__":
