@@ -105,20 +105,35 @@ def chat():
                 initial_input = CustomStepInput(user_message)
                 result = main.approval_workflow.run(step_input=initial_input)
                 
-                # Extract response and audio path
+                # Extract response and handle structured content
                 if hasattr(result, 'content') and isinstance(result.content, dict):
-                    response_content = result.content.get('summary', str(result.content))
-                    audio_path = result.content.get('audio_path')
+                    # Check if it's the structured response with summary_result and final_response
+                    if 'summary_result' in result.content and 'final_response' in result.content:
+                        response_data = {
+                            "summary_result": result.content['summary_result'],
+                            "final_response": result.content['final_response'],
+                            "audio_path": result.content.get('audio_path'),
+                            "is_finance": True,
+                            "ok": True
+                        }
+                    else:
+                        # Fallback for other dict formats
+                        response_content = result.content.get('summary', str(result.content))
+                        response_data = {
+                            "response": response_content,
+                            "audio_path": result.content.get('audio_path'),
+                            "is_finance": True,
+                            "ok": True
+                        }
                 else:
+                    # Handle non-dict content
                     response_content = str(result.content) if hasattr(result, 'content') else str(result)
-                    audio_path = None
-                
-                response_data = {
-                    "response": response_content,
-                    "audio_path": audio_path,
-                    "is_finance": True,
-                    "ok": True
-                }
+                    response_data = {
+                        "response": response_content,
+                        "audio_path": None,
+                        "is_finance": True,
+                        "ok": True
+                    }
                 
             except Exception as workflow_error:
                 # If workflow fails, provide fallback response
