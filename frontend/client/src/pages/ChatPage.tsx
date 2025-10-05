@@ -65,7 +65,9 @@ export default function ChatPage() {
       // Handle structured response with summary_result and final_response
       let aiContent: string;
       if (data.summary_result && data.final_response) {
-        aiContent = `${data.summary_result}\n\n${data.final_response}`;
+        aiContent = `${data.summary_result}
+
+${data.final_response}`;
       } else {
         // Fallback to original format handling
         aiContent = data.response || data.message || data.data || JSON.stringify(data);
