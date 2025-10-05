@@ -14,6 +14,60 @@ from server import call_and_collect
 
 load_dotenv(override=True)
 
+# Finance-related keywords and patterns
+FINANCE_KEYWORDS = [
+    'stock', 'stocks', 'share', 'shares', 'investment', 'invest', 'trading', 'trade',
+    'market', 'portfolio', 'dividend', 'equity', 'securities', 'ticker', 'buy', 'sell',
+    'price', 'valuation', 'finance', 'financial', 'nasdaq', 'dow', 'sp500', 's&p',
+    'bull', 'bear', 'earnings', 'profit', 'revenue', 'company', 'corporation', 'fund',
+    'etf', 'mutual fund', 'bond', 'commodity', 'crypto', 'cryptocurrency', 'bitcoin',
+    'analysis', 'recommendation', 'forecast', 'trend', 'volatility', 'return', 'roi'
+]
+
+def is_finance_related(query: str) -> bool:
+    """Determine if a query is finance-related based on keywords"""
+    query_lower = query.lower()
+    
+    # Check for direct finance keywords
+    for keyword in FINANCE_KEYWORDS:
+        if keyword in query_lower:
+            return True
+    
+    # Check for common finance question patterns
+    finance_patterns = [
+        'should i buy', 'should i sell', 'which stock', 'what stock',
+        'best investment', 'good investment', 'market outlook', 'stock recommendation',
+        'financial advice', 'investment advice', 'portfolio advice'
+    ]
+    
+    for pattern in finance_patterns:
+        if pattern in query_lower:
+            return True
+    
+    return False
+
+def get_generic_response(query: str) -> str:
+    """Generate a generic response for non-finance queries using Claude"""
+    try:
+        from agno.models.anthropic import Claude
+        
+        generic_agent = Agent(
+            name="Generic Assistant",
+            model=Claude(id="claude-sonnet-4-0"),
+            role="You are a helpful AI assistant. Provide concise and helpful responses to user queries.",
+            instructions=[
+                "Be friendly and conversational",
+                "Keep responses concise but informative",
+                "If the user asks about finance or stocks, politely redirect them to use finance-specific commands"
+            ]
+        )
+        
+        response = generic_agent.run(query)
+        return response.content if hasattr(response, 'content') else str(response)
+        
+    except Exception as e:
+        return "Hello! I'm here to help. For stock and financial advice, try asking me about specific stocks or investments!"
+
 
 def read_manager_phone_from_json(json_path: str = "senior_manager.json") -> str:
     """Get manager phone number - currently hardcoded"""
@@ -21,8 +75,11 @@ def read_manager_phone_from_json(json_path: str = "senior_manager.json") -> str:
 
 
 def get_user_input(step_input: StepInput) -> StepOutput:
-    """Step 1: Get user input via API parameters"""
-    user_query = input('how can I help you today? \n')
+    """Step 1: Get user input from API parameters (stored in step_input context)"""
+    # Get user query from the step input context (passed from API)
+    user_query = getattr(step_input, 'user_query', None)
+    if not user_query:
+        user_query = "What stocks should I buy today?"  # fallback
     return StepOutput(content=user_query)
 
 
@@ -203,8 +260,11 @@ def prepare_phone_input(step_input: StepInput) -> StepOutput:
 
     The message comes from the ElevenLabs TTS result.
     """
-
-    return StepOutput(content=prompt.strip())
+    
+    # Store additional context for final step
+    step_output = StepOutput(content=prompt.strip())
+    step_output.tts_audio_path = tts_result  # Store the audio file path
+    return step_output
 
 
 @tool
@@ -225,16 +285,34 @@ def twilio_function(message: str = "") -> str:
         return f"Phone call failed: {str(e)}"
         
 
+def capture_summary_for_final(step_input: StepInput) -> StepOutput:
+    """Step 3.2: Capture summary results to pass to final step"""
+    summary_results = step_input.previous_step_content
+    
+    # Pass the summary forward while preparing for TTS
+    step_output = StepOutput(content=summary_results)
+    step_output.summary_for_final = summary_results  # Store for final step
+    return step_output
+
 def handle_approval_step(step_input: StepInput) -> StepOutput:
-    """Step 8: Handle approval response and return final result"""
+    """Step 8: Handle approval response and return final result with summary and audio"""
     twilio_result = step_input.previous_step_content
     
-    if "1" in twilio_result:
-        final_message = "Even the senior manager thinks this is a great idea!"
-    else:
-        final_message = "Sorry, I can't help them today"
+    # Try to get the summary from workflow context
+    summary_results = getattr(step_input, 'summary_for_final', 'Stock analysis completed.')
     
-    return StepOutput(content=final_message)
+    if "1" in twilio_result:
+        approval_message = "Even the senior manager thinks this is a great idea!"
+    else:
+        approval_message = "Sorry, I can't help them today"
+    
+    # Return both summary and approval message
+    final_content = {
+        'summary': summary_results,
+        'approval': approval_message,
+    }
+    
+    return StepOutput(content=final_content)
 
 # Define agents
 api_agent = Agent(
@@ -286,15 +364,16 @@ approval_workflow = Workflow(
         db_file="tmp/approval_workflow.db",
     ),
     steps=[
-        get_user_input,      # Step 1: Get CLI input from user
-        prepare_api_input,   # Step 2: Prepare API input
-        api_agent,           # Step 3: Call API using custom tool
-        summarizer_agent,    # step 3.1: Summarize text
-        prepare_tts_input,   # Step 4: Prepare TTS input
-        tts_agent,           # Step 5: Convert to speech
-        prepare_phone_input, # Step 6: Prepare phone input
-        phone_agent,         # Step 7: Make phone call
-        handle_approval_step # Step 8: Handle approval and return result
+        get_user_input,         # Step 1: Get API input from user
+        prepare_api_input,      # Step 2: Prepare API input
+        api_agent,              # Step 3: Call API using custom tool
+        summarizer_agent,       # Step 3.1: Summarize text
+        capture_summary_for_final,  # Step 3.2: Capture summary for final step
+        prepare_tts_input,      # Step 4: Prepare TTS input
+        tts_agent,              # Step 5: Convert to speech
+        prepare_phone_input,    # Step 6: Prepare phone input
+        phone_agent,            # Step 7: Make phone call
+        handle_approval_step    # Step 8: Handle approval and return result
     ],
 )
 

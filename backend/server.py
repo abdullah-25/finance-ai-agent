@@ -78,23 +78,69 @@ def run_workflow():
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    """Chat endpoint for frontend - runs the approval workflow based on user message"""
+    """Chat endpoint for frontend - classifies query and responds appropriately"""
     try:
         data = request.get_json()
         user_message = data.get('message', '')
         
-        # Run the workflow
-        import main
-        result = main.approval_workflow.run()
+        if not user_message:
+            return jsonify({
+                "error": "No message provided",
+                "ok": False
+            }), 400
         
-        response_data = {
-            "response": result.content,
-            "ok": True
-        }
+        import main
+        
+        # Check if the query is finance-related
+        if main.is_finance_related(user_message):
+            # Finance query - run the approval workflow
+            try:
+                # Create custom step input with user query
+                class CustomStepInput:
+                    def __init__(self, user_query):
+                        self.user_query = user_query
+                        self.previous_step_content = None
+                
+                # Run workflow with user input
+                initial_input = CustomStepInput(user_message)
+                result = main.approval_workflow.run(step_input=initial_input)
+                
+                # Extract response and audio path
+                if hasattr(result, 'content') and isinstance(result.content, dict):
+                    response_content = result.content.get('summary', str(result.content))
+                    audio_path = result.content.get('audio_path')
+                else:
+                    response_content = str(result.content) if hasattr(result, 'content') else str(result)
+                    audio_path = None
+                
+                response_data = {
+                    "response": response_content,
+                    "audio_path": audio_path,
+                    "is_finance": True,
+                    "ok": True
+                }
+                
+            except Exception as workflow_error:
+                # If workflow fails, provide fallback response
+                response_data = {
+                    "response": f"I'm having trouble processing your financial request right now: {str(workflow_error)}",
+                    "is_finance": True,
+                    "ok": False
+                }
+        else:
+            # Non-finance query - use generic LLM response
+            generic_response = main.get_generic_response(user_message)
+            response_data = {
+                "response": generic_response,
+                "is_finance": False,
+                "ok": True
+            }
+        
         return jsonify(response_data)
+        
     except Exception as e:
         import traceback
-        error_msg = f"Workflow failed: {str(e)}"
+        error_msg = f"Chat endpoint failed: {str(e)}"
         return jsonify({
             "error": error_msg,
             "traceback": traceback.format_exc(),
@@ -247,8 +293,8 @@ def call_and_collect(to_number: str, message: str, timeout_sec: int = 45) -> str
 def run_server():
     """Start Flask server"""
     host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "3000"))
-    app.run(host=host, port=port, debug=True, threaded=True, use_reloader=False)
+    port = int(os.getenv("PORT", "8000"))
+    app.run(host=host, port="8000", debug=True, threaded=True, use_reloader=False)
 
 
 if __name__ == "__main__":
