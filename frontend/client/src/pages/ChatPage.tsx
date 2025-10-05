@@ -5,6 +5,7 @@ import LoadingDots from "@/components/LoadingDots";
 import ThemeToggle from "@/components/ThemeToggle";
 import { TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { parseBackendResponse } from "@/utils/responseParser";
 
 interface Message {
   id: string;
@@ -62,16 +63,8 @@ export default function ChatPage() {
 
       const data = await response.json();
       
-      // Handle structured response with summary_result and final_response
-      let aiContent: string;
-      if (data.summary_result && data.final_response) {
-        aiContent = `${data.summary_result}
-
-${data.final_response}`;
-      } else {
-        // Fallback to original format handling
-        aiContent = data.response || data.message || data.data || JSON.stringify(data);
-      }
+      // Parse the backend response using our utility function
+      const aiContent = parseBackendResponse(data);
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
