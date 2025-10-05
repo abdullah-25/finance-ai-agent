@@ -280,36 +280,104 @@ def twilio_function(message: str = "") -> str:
             message,
             timeout_sec=45
         )
-        return f"User pressed: {digit}"
+        # Return both the message and the pressed digit in JSON format
+        import json
+        result = {
+            "message_sent": message,
+            "digit_pressed": digit,
+            "call_status": "completed"
+        }
+        return json.dumps(result)
     except Exception as e:
-        return f"Phone call failed: {str(e)}"
+        import json
+        result = {
+            "message_sent": message,
+            "digit_pressed": "",
+            "call_status": "failed",
+            "error": str(e)
+        }
+        return json.dumps(result)
         
 
 def capture_summary_for_final(step_input: StepInput) -> StepOutput:
-    """Step 3.2: Capture summary results to pass to final step"""
+    """Step 3.2: Capture summary results and store for final step"""
     summary_results = step_input.previous_step_content
+    
+    # Store summary in a temporary file that can be accessed by final step
+    import json
+    
+    # Create a unique identifier for this workflow run
+    workflow_id = str(int(time.time() * 1000))  # Use milliseconds for uniqueness
+    
+    # Store summary in temporary file
+    temp_dir = "tmp"
+    os.makedirs(temp_dir, exist_ok=True)
+    summary_file = os.path.join(temp_dir, f"summary_{workflow_id}.json")
+    
+    with open(summary_file, 'w') as f:
+        json.dump({
+            'summary': summary_results,
+            'timestamp': time.time(),
+            'workflow_id': workflow_id
+        }, f)
     
     # Pass the summary forward while preparing for TTS
     step_output = StepOutput(content=summary_results)
-    step_output.summary_for_final = summary_results  # Store for final step
     return step_output
 
 def handle_approval_step(step_input: StepInput) -> StepOutput:
     """Step 8: Handle approval response and return final result with summary and audio"""
     twilio_result = step_input.previous_step_content
     
-    # Try to get the summary from workflow context
-    summary_results = getattr(step_input, 'summary_for_final', 'Stock analysis completed.')
+    # Parse Twilio result (now in JSON format)
+    import json
+    twilio_data = {}
+    try:
+        twilio_data = json.loads(twilio_result)
+    except:
+        # Fallback for old format
+        twilio_data = {
+            "message_sent": "Unknown message",
+            "digit_pressed": twilio_result.replace("User pressed: ", "").split(" for message:")[0],
+            "call_status": "completed"
+        }
     
-    if "1" in twilio_result:
+    # Try to get the summary from stored file
+    summary_results = "Stock analysis completed."  # Default fallback
+    
+    try:
+        # Look for recent summary files
+        temp_dir = "tmp"
+        if os.path.exists(temp_dir):
+            summary_files = [f for f in os.listdir(temp_dir) if f.startswith('summary_') and f.endswith('.json')]
+            if summary_files:
+                # Get the most recent summary file
+                latest_file = max(summary_files, key=lambda x: os.path.getctime(os.path.join(temp_dir, x)))
+                summary_path = os.path.join(temp_dir, latest_file)
+                
+                with open(summary_path, 'r') as f:
+                    data = json.load(f)
+                    summary_results = data.get('summary', summary_results)
+                
+                # Clean up the temp file after reading
+                try:
+                    os.remove(summary_path)
+                except:
+                    pass
+    except Exception as e:
+        print(f"Error reading summary: {e}")
+    
+    digit_pressed = twilio_data.get('digit_pressed', '')
+    
+    if "1" in digit_pressed:
         approval_message = "Even the senior manager thinks this is a great idea!"
     else:
         approval_message = "Sorry, I can't help them today"
     
-    # Return both summary and approval message
+    # Return only summary_result and final_response to frontend
     final_content = {
-        'summary': summary_results,
-        'approval': approval_message,
+        'summary_result': summary_results,
+        'final_response': approval_message
     }
     
     return StepOutput(content=final_content)
