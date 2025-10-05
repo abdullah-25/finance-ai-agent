@@ -4,7 +4,7 @@ AI-powered stock recommendation system with chat interface that analyzes market 
 
 ## Screenshot
 
-<!-- Add screenshot here -->
+![Alt text](screenshot.png "StockAI app")
 
 ## Backend Setup
 
