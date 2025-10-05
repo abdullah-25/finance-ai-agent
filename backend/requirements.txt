@@ -1,0 +1,9 @@
+flask==3.0.0
+flask-cors==4.0.0
+twilio==8.11.0
+python-dotenv==1.0.0
+requests==2.31.0
+elevenlabs==2.16.0
+fastapi==0.118.0
+agno
+pydantic==2.11.10
