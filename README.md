@@ -1,4 +1,4 @@
-# Quibittron
+# finance-ai-agent
 
 AI-powered stock recommendation system with chat interface that analyzes market data, generates recommendations, and calls a senior manager for approval via phone.
 
